@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Расписание КЭСИ</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #1c1c1e);
+      --text: var(--tg-theme-text-color, #ffffff);
+      --hint: var(--tg-theme-hint-color, #8e8e93);
+      --button: var(--tg-theme-button-color, #2aabee);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+      --secondary: var(--tg-theme-secondary-bg-color, #2c2c2e);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 16px;
+      padding-bottom: 40px;
+      min-height: 100vh;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 600;
+    }
+
+    .header .group {
+      font-size: 14px;
+      color: var(--hint);
+      margin-top: 4px;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+      background: var(--secondary);
+      padding: 4px;
+      border-radius: 12px;
+    }
+
+    .tab {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      background: transparent;
+      color: var(--hint);
+      font-size: 15px;
+      font-weight: 500;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab.active {
+      background: var(--button);
+      color: var(--button-text);
+    }
+
+    .content {
+      display: none;
+    }
+
+    .content.active {
+      display: block;
+    }
+
+    .day-title {
+      font-size: 17px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      padding-left: 4px;
+    }
+
+    .pair {
+      background: var(--secondary);
+      border-radius: 14px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+    }
+
+    .pair-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .pair-num {
+      font-weight: 600;
+      font-size: 15px;
+    }
+
+    .pair-time {
+      font-size: 14px;
+      color: var(--hint);
+    }
+
+    .pair-subject {
+      font-size: 16px;
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+
+    .pair-info {
+      font-size: 13px;
+      color: var(--hint);
+    }
+
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--hint);
+      font-size: 16px;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--hint);
+    }
+
+    .error {
+      text-align: center;
+      padding: 40px 20px;
+      color: #ff453a;
+    }
+
+    .week-day {
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>📅 Расписание</h1>
+    <div class="group" id="group-name">Загрузка...</div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-day="today">Сегодня</button>
+    <button class="tab" data-day="tomorrow">Завтра</button>
+    <button class="tab" data-day="week">Неделя</button>
+  </div>
+
+  <div id="content" class="loading">Загрузка расписания...</div>
+
+  <script>
+    const tg = window.Telegram.WebApp;
+    tg.ready();
+    tg.expand();
+
+    // !!! ВАЖНО: замени на URL своего бота на Railway
+  const API_URL = "https://kesi-bot.onrender.com/api/schedule";
+
+    const content = document.getElementById('content');
+    const groupName = document.getElementById('group-name');
+    const tabs = document.querySelectorAll('.tab');
+
+    let currentDay = 'today';
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentDay = tab.dataset.day;
+        loadSchedule(currentDay);
+      });
+    });
+
+    async function loadSchedule(day) {
+      content.className = 'loading';
+      content.innerHTML = 'Загрузка...';
+
+      try {
+        const res = await fetch(`${API_URL}?day=${day}`);
+        const data = await res.json();
+
+        if (data.error) {
+          content.className = 'error';
+          content.innerHTML = data.error;
+          return;
+        }
+
+        groupName.textContent = data.group || 'КЭСИ';
+
+        if (day === 'week') {
+          renderWeek(data.days);
+        } else {
+          renderDay(data);
+        }
+      } catch (e) {
+        content.className = 'error';
+        content.innerHTML = 'Не удалось загрузить расписание';
+        console.error(e);
+      }
+    }
+
+    function renderDay(data) {
+      if (!data.pairs || data.pairs.length === 0) {
+        content.className = 'empty';
+        content.innerHTML = '🎉 Пар нет';
+        return;
+      }
+
+      let html = `<div class="day-title">${data.day}</div>`;
+      data.pairs.forEach(p => {
+        html += `
+          <div class="pair">
+            <div class="pair-header">
+              <span class="pair-num">${p.num} пара</span>
+              <span class="pair-time">${p.time}</span>
+            </div>
+            <div class="pair-subject">${p.subject}</div>
+            <div class="pair-info">${p.teacher}${p.room ? ' · ' + p.room : ''}</div>
+          </div>
+        `;
+      });
+
+      content.className = 'content active';
+      content.innerHTML = html;
+    }
+
+    function renderWeek(days) {
+      if (!days || days.length === 0) {
+        content.className = 'empty';
+        content.innerHTML = 'Расписание пустое';
+        return;
+      }
+
+      let html = '';
+      days.forEach(d => {
+        html += `<div class="week-day">`;
+        html += `<div class="day-title">${d.day}</div>`;
+        
+        if (!d.pairs || d.pairs.length === 0) {
+          html += `<div class="empty" style="padding:16px 0">🎉 Пар нет</div>`;
+        } else {
+          d.pairs.forEach(p => {
+            html += `
+              <div class="pair">
+                <div class="pair-header">
+                  <span class="pair-num">${p.num} пара</span>
+                  <span class="pair-time">${p.time}</span>
+                </div>
+                <div class="pair-subject">${p.subject}</div>
+                <div class="pair-info">${p.teacher}${p.room ? ' · ' + p.room : ''}</div>
+              </div>
+            `;
+          });
+        }
+        html += `</div>`;
+      });
+
+      content.className = 'content active';
+      content.innerHTML = html;
+    }
+
+    // Загружаем сразу
+    loadSchedule('today');
+  </script>
+</body>
+</html>
